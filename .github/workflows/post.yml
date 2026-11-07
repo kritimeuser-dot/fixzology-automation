@@ -2,20 +2,29 @@ name: Fixzology Auto Reel
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 3 * * *'
+    - cron: '30 23 * * *' # Subah 5 AM IST
+    - cron: '30 11 * * *' # Sham 5 PM IST
 jobs:
   post:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        with: {python-version: '3.11'}
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install -r requirements.txt
+        name: Install Python Packages
       - run: python main.py
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+        name: Run Automation
       - uses: actions/upload-artifact@v4
         with:
           name: fixzology-output
           path: |
             video.mp4
             script.txt
+            voice.mp3
