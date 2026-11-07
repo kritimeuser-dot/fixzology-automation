@@ -1,7 +1,18 @@
-# Fixzology - Face Lock + 7 Look Rotation
+# Fixzology Automation - Professional Version
+# Author: fixzology | Architecture: Single Job, Day-Based Face Lock
 import datetime
-import feedparser
-import os, subprocess
+import os
+import subprocess
+import sys
+import urllib.request
+import xml.etree.ElementTree as ET
+
+# ---------- CONFIG ----------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+IMAGES_DIR = os.path.join(BASE_DIR, "images")
+OUTPUT_VIDEO = os.path.join(BASE_DIR, "video.mp4")
+OUTPUT_SCRIPT = os.path.join(BASE_DIR, "script.txt")
+PIB_RSS_URL = "https://pib.gov.in/RssMain.aspx?mod=6&reg=3&lang=1"
 
 STYLES = {
     0: "Monday - Traditional White Kurta + Black Nehru Jacket",
@@ -12,68 +23,94 @@ STYLES = {
     5: "Saturday - Yellow Mustard",
     6: "Sunday - Grey",
 }
+DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
-DAYS = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
+def log(msg):
+    print(f"[Fixzology] {msg}", flush=True)
 
-today_num = datetime.datetime.now().weekday()
-today_name = DAYS[today_num]
-today_style = STYLES[today_num]
+def fetch_pib_news():
+    """PIB RSS se latest news lao - bina kisi external library ke"""
+    log("Step 1: PIB se khabar la rahe hai...")
+    req = urllib.request.Request(PIB_RSS_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as res:
+        data = res.read()
+    root = ET.fromstring(data)
+    # RSS format: channel -> item
+    for item in root.findall(".//item"):
+        title = item.findtext("title", "").strip()
+        desc = item.findtext("description", "").strip()
+        link = item.findtext("link", "").strip()
+        if title:
+            return {"title": title, "summary": desc[:600], "link": link}
+    return None
 
-print(f"Aaj ka Style: {today_style}")
+def build_script(news, style, day_name):
+    log("Step 2: Hook + Kanoon + Question wali script bana rahe hai...")
+    script = f"""HOOK (0-3 sec):
+Ruko! {news['title']}
 
-# 1. PIB se khabar lo
-print("1. Sirf PIB / Court / ANI se khabar lo")
-pib_url = "https://pib.gov.in/RssMain.aspx?mod=6&reg=3&lang=1"
-feed = feedparser.parse(pib_url)
+STYLE: Aaj {style} me hu.
 
-if not feed.entries:
-    print("Khabar nahi mili, SKIP")
-    exit(0)
+KHABAR (3-20 sec):
+{news['summary']}
+Source: {news['link']}
 
-news = feed.entries[0]
-title = news.title
-summary = news.get("summary", "")[:500]
-link = news.link
-print(f"Khabar: {title}")
+KANOON / RULE:
+Isse juda niyam sarkari notification ke hisaab se lagu hota hai. Poori jaankari ke liye official notification zaroor padhein.
 
-# 2. Check - 3 jagah
-print("2. 3 jagah check karo, nahi mili to SKIP")
-# Abhi PIB ko hi final maan rahe hai
-
-# 3. Script banao
-print("3. Hook + Kanoon + Question wali script banao")
-script = f"""
-HOOK: Ruko! {title}
-STYLE: Aaj {today_style} me hu.
-
-KHABAR: {summary}
-Source: {link}
-
-KANOON: Isse juda niyam sarkari notification ke hisaab se lagu hota hai.
-
-QUESTION: Aapko kya lagta hai ye sahi hai ya galat? Comment me batao. Follow fixzology.
+QUESTION (Last):
+Aapko kya lagta hai, ye faisla sahi hai ya galat? Comment me batao.
+Follow karo fixzology ko aisi hi sahi khabar ke liye.
 """
-with open("script.txt", "w", encoding="utf-8") as f:
-    f.write(script)
-print("Script ban gayi")
+    with open(OUTPUT_SCRIPT, "w", encoding="utf-8") as f:
+        f.write(script)
+    log(f"Script saved: {OUTPUT_SCRIPT}")
+    return script
 
-# 4. Face Lock photo se video banao
-print("4. Face Lock wali photo se video banao")
-photo = f"images/{today_name}.jpg"
-print(f"Photo: {photo} - Style: {today_style}")
+def build_video(day_name, style):
+    log("Step 3: Face Lock photo se video bana rahe hai...")
+    photo = os.path.join(IMAGES_DIR, f"{day_name}.jpg")
+    log(f"Photo: {photo} | Style: {style}")
+    if not os.path.exists(photo):
+        log(f"ERROR: {photo} nahi mili")
+        return False
+    cmd = [
+        "ffmpeg", "-y",
+        "-loop", "1", "-i", photo,
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.001,1.2)':d=900:s=1080x1920:fps=30",
+        "-t", "30",
+        "-pix_fmt", "yuv420p",
+        OUTPUT_VIDEO
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        log(f"ffmpeg error: {result.stderr[-500:]}")
+        return False
+    log(f"Video saved: {OUTPUT_VIDEO}")
+    return True
 
-if not os.path.exists(photo):
-    print(f"{photo} nahi mili")
-    exit(0)
+def main():
+    today_num = datetime.datetime.now().weekday()
+    today_name = DAYS[today_num]
+    today_style = STYLES[today_num]
+    log(f"Aaj ka Style: {today_style} | Day: {today_name}")
 
-cmd = [
-    "ffmpeg", "-y",
-    "-loop", "1", "-i", photo,
-    "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.001,1.2)':d=900:s=1080x1920:fps=30",
-    "-t", "30",
-    "-pix_fmt", "yuv420p",
-    "video.mp4"
-]
-subprocess.run(cmd)
-print("Video ban gaya: video.mp4")
-print("DONE")
+    try:
+        news = fetch_pib_news()
+    except Exception as e:
+        log(f"PIB fetch fail: {e} -> SKIP")
+        sys.exit(0)
+
+    if not news:
+        log("Koi khabar nahi mili -> SKIP")
+        sys.exit(0)
+
+    log(f"Khabar mili: {news['title']}")
+    build_script(news, today_style, today_name)
+    ok = build_video(today_name, today_style)
+    if not ok:
+        sys.exit(1)
+    log("DONE - Sab kuch ho gaya")
+
+if __name__ == "__main__":
+    main()
