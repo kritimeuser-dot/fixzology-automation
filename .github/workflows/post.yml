@@ -1,1 +1,16 @@
-
+name: Fixzology Auto Reel
+on:
+  schedule:
+    - cron: '30 23 * * *'
+    - cron: '30 11 * * *'
+  workflow_dispatch:
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - run: python main.py
